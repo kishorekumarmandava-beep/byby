@@ -1,0 +1,28 @@
+runConfig:
+  minInstances: 0
+  maxInstances: 4
+  concurrency: 80
+  cpu: 1
+  memoryMiB: 512
+
+env:
+  - variable: DATABASE_URL
+    secret: DATABASE_URL
+
+  - variable: FIREBASE_PROJECT_ID
+    value: byby-a0e16
+
+  - variable: FIREBASE_CLIENT_EMAIL
+    secret: FIREBASE_CLIENT_EMAIL
+
+  - variable: FIREBASE_PRIVATE_KEY
+    secret: FIREBASE_PRIVATE_KEY
+
+  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+    value: AIzaSyDcYHmyWaGEhWRofXkLbWQXedUbCJ0VxVo
+
+  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
+    value: "1:236883889084:web:3ff7e649c2e4bbe8ddf9b9"
+
+  - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+    value: "236883889084"
