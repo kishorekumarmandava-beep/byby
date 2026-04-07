@@ -1,0 +1,132 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  phone         String?
+  phoneVerified Boolean  @default(false)
+  role          String   // 'USER', 'VENDOR', 'AGENT', 'ADMIN'
+  password      String   // Firebase SSO placeholder
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  vendorProfile VendorProfile?
+  orders        Order[]        @relation("BuyerOrders")
+  cart          Cart?
+  
+  referralsMade Referral[]     @relation("AgentReferrals")
+  referredBy    Referral?      @relation("ReferredUser")
+}
+
+model VendorProfile {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id])
+  businessName String
+  pan          String?
+  gstin        String?
+  totalSales   Float    @default(0) // Used for 12 Lakh limit check
+  isBlocked    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  products Product[]
+}
+
+model Product {
+  id               String        @id @default(cuid())
+  vendorId         String
+  vendor           VendorProfile @relation(fields: [vendorId], references: [id])
+  name             String
+  categoryId       String?
+  category         Category?     @relation(fields: [categoryId], references: [id])
+  imageUrl         String?
+  description      String?
+  mrp              Float
+  price            Float         // Selling Price
+  hsnCode          String?
+  originCountry    String        @default("India")
+  taxRate          Float         @default(18.0) // GST %
+
+  // Compliance Footprints (Mandatory)
+  purchaseBillNo   String
+  purchaseDate     DateTime
+  sellerGstNo      String
+  purchasePrice    Float
+
+  createdAt        DateTime      @default(now())
+
+  cartItems        CartItem[]
+  orderItems       OrderItem[]
+}
+
+model Category {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  isApproved  Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  products    Product[]
+}
+
+model Cart {
+  id        String     @id @default(cuid())
+  userId    String     @unique
+  user      User       @relation(fields: [userId], references: [id])
+  items     CartItem[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+model CartItem {
+  id        String   @id @default(cuid())
+  cartId    String
+  cart      Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  quantity  Int      @default(1)
+  createdAt DateTime @default(now())
+}
+
+model Order {
+  id             String      @id @default(cuid())
+  userId         String
+  user           User        @relation("BuyerOrders", fields: [userId], references: [id])
+  totalAmount    Float
+  taxAmount      Float       @default(0)
+  shippingCharge Float       @default(50)
+  tdsAmount      Float       @default(0)
+  tcsAmount      Float       @default(0)
+  status         String      // 'PENDING', 'COMPLETED', 'CANCELLED'
+  items          OrderItem[]
+  createdAt      DateTime    @default(now())
+}
+
+model OrderItem {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  quantity  Int
+  pricePaid Float    // Historical snapshot of the price at order time
+  createdAt DateTime @default(now())
+}
+
+model Referral {
+  id             String   @id @default(cuid())
+  agentId        String
+  agent          User     @relation("AgentReferrals", fields: [agentId], references: [id])
+  referredUserId String   @unique
+  referredUser   User     @relation("ReferredUser", fields: [referredUserId], references: [id])
+  commissionEarned Float  @default(0)
+  createdAt      DateTime @default(now())
+}
