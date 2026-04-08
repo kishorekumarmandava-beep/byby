@@ -105,8 +105,12 @@ export default function LoginPage() {
       const navigateTo = await syncFirebaseAuth(idToken, role, formattedPhone, name);
       router.push(navigateTo);
     } catch (err: any) {
-      console.error(err);
-      setError("Invalid OTP. Please try again.");
+      console.error("OTP Verification Error:", err);
+      if (err?.code === 'auth/invalid-verification-code') {
+         setError("Invalid OTP code. Please check and try again.");
+      } else {
+         setError(err?.message || "Server Error: Could not complete login. Check console.");
+      }
     } finally {
       setLoading(false);
     }
