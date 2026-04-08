@@ -34,8 +34,8 @@ export default function LoginPage() {
 
   useEffect(() => {
     // Initialize RecaptchaVerifier once on mount if we're using Phone Auth
-    if (typeof window !== "undefined" && !window.recaptchaVerifier) {
-      window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+    if (typeof window !== "undefined" && !(window as any).recaptchaVerifier) {
+      (window as any).recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
         'size': 'invisible',
         'callback': (response: any) => {
           // reCAPTCHA solved
@@ -67,7 +67,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const formattedPhone = `+91${cleaned}`;
-      const appVerifier = window.recaptchaVerifier;
+      const appVerifier = (window as any).recaptchaVerifier;
       
       const confirmation = await signInWithPhoneNumber(auth, formattedPhone, appVerifier);
       setConfirmationResult(confirmation);
@@ -76,9 +76,9 @@ export default function LoginPage() {
       console.error(err);
       setError(err?.message || "Failed to send OTP. Try again.");
       // Reset reCAPTCHA so they can try again
-      if (window.recaptchaVerifier) {
-        window.recaptchaVerifier.render().then((widgetId: any) => {
-          grecaptcha.reset(widgetId);
+      if ((window as any).recaptchaVerifier) {
+        (window as any).recaptchaVerifier.render().then((widgetId: any) => {
+          (window as any).grecaptcha.reset(widgetId);
         });
       }
     } finally {
