@@ -1,0 +1,40 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    function isAdmin() {
+      return isAuthenticated() && request.auth.token.role == 'admin';
+    }
+    function isVendor() {
+      return isAuthenticated() && request.auth.token.role == 'vendor';
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+    
+    match /users/{userId}/profile/{fileName} {
+      allow read: if true;
+      allow write: if request.auth.uid == userId;
+    }
+
+    match /users/{userId}/kyc/{fileName} {
+      allow read, write: if request.auth.uid == userId || isAdmin();
+    }
+    
+    match /vendors/{vendorId}/products/{fileName} {
+      allow read: if true;
+      allow write: if (isVendor() && request.auth.uid == vendorId) || isAdmin();
+    }
+    match /vendors/{vendorId}/documents/{fileName} {
+      allow read, write: if (isVendor() && request.auth.uid == vendorId) || isAdmin();
+    }
+
+    match /shipments/{shipmentId}/labels/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isVendor() || isAdmin();
+    }
+  }
+}

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import Navbar from "./components/Navbar";
-
+import { AuthProvider } from "@/lib/firebase/context";
 export const metadata: Metadata = {
   title: "ByBy — Indian E-Commerce Marketplace",
   description: "India's compliant marketplace for courses, electronics, apparel & more. Shop with GST compliance, TDS tracking, and verified vendors.",
@@ -16,8 +16,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <Navbar />
-        <main style={{ flex: 1 }}>{children}</main>
+        <AuthProvider>
+          <Navbar />
+          <main style={{ flex: 1 }}>{children}</main>
         <footer className="footer">
           <div className="container">
             <div className="footer-links">
@@ -26,9 +27,10 @@ export default function RootLayout({
               <a href="#">Compliance</a>
               <a href="#">Support</a>
             </div>
-            <p>© {new Date().getFullYear()} ByBy Marketplace · Indian-law compliant</p>
-          </div>
-        </footer>
+              <p>© {new Date().getFullYear()} ByBy Marketplace · Indian-law compliant</p>
+            </div>
+          </footer>
+        </AuthProvider>
       </body>
     </html>
   );

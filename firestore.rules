@@ -1,0 +1,181 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function getRole() {
+      return request.auth.token.role;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && getRole() == 'admin';
+    }
+
+    function isCustomer() {
+      // If role is null it means we might not have set custom claims yet, but the prompt says 
+      // strict claim checks. So we rely on custom claim 'customer'.
+      return isAuthenticated() && getRole() == 'customer';
+    }
+
+    function isAgent() {
+      return isAuthenticated() && getRole() == 'agent';
+    }
+
+    function isVendor() {
+      return isAuthenticated() && getRole() == 'vendor';
+    }
+
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    // Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+    
+    // --- USERS ---
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      // Clients cannot write to role or status fields
+      allow update: if (isOwner(userId) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'status'])) || isAdmin();
+      // Created by backend trigger
+      
+      match /addresses/{addressId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+    }
+    
+    // --- APPLICATIONS ---
+    match /agentApplications/{appId} {
+      allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
+      allow read: if isOwner(resource.data.uid) || isAdmin();
+      allow update: if isAdmin();
+    }
+    match /vendorApplications/{appId} {
+      allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
+      allow read: if isOwner(resource.data.uid) || isAdmin();
+      allow update: if isAdmin();
+    }
+    
+    // --- AGENTS ---
+    match /agents/{agentId} {
+      allow read: if (isAgent() && resource.data.uid == request.auth.uid) || isAdmin();
+      allow update: if (isAgent() && resource.data.uid == request.auth.uid && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'commissionPlanId', 'stats'])) || isAdmin();
+      
+      match /activityLogs/{logId} {
+        allow read: if (isAgent() && get(/databases/$(database)/documents/agents/$(agentId)).data.uid == request.auth.uid) || isAdmin();
+      }
+    }
+    
+    // --- VENDORS ---
+    match /vendors/{vendorId} {
+      allow read: if resource.data.status == 'active' || (isVendor() && resource.data.uid == request.auth.uid) || isAdmin();
+      allow update: if (isVendor() && resource.data.uid == request.auth.uid && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'subscriptionStatus', 'ratingSummary'])) || isAdmin();
+      
+      match /documents/{docId} {
+        allow read, write: if (isVendor() && get(/databases/$(database)/documents/vendors/$(vendorId)).data.uid == request.auth.uid) || isAdmin();
+      }
+      match /payoutAccounts/{accId} {
+        allow read, write: if (isVendor() && get(/databases/$(database)/documents/vendors/$(vendorId)).data.uid == request.auth.uid) || isAdmin();
+      }
+    }
+
+    // --- PRODUCTS & CATEGORIES ---
+    match /products/{productId} {
+      allow read: if true; 
+      allow create: if isVendor() && request.resource.data.vendorUid == request.auth.uid;
+      allow update: if (isVendor() && resource.data.vendorUid == request.auth.uid) || isAdmin();
+      allow delete: if (isVendor() && resource.data.vendorUid == request.auth.uid) || isAdmin();
+    }
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // --- ORDERS & CART ---
+    match /cartSessions/{cartId} {
+      allow read, write: if isOwner(resource.data.customerUid) || (request.method == 'create' && request.resource.data.customerUid == request.auth.uid);
+    }
+    match /orders/{orderId} {
+      allow read: if isOwner(resource.data.customerUid) || (isVendor() && request.auth.uid in resource.data.vendorIds) || isAdmin();
+      allow create: if isOwner(request.resource.data.customerUid);
+      allow update: if isAdmin() || (isVendor() && request.auth.uid in resource.data.vendorIds); 
+      
+      match /statusTimeline/{timelineId} {
+        allow read: if isOwner(get(/databases/$(database)/documents/orders/$(orderId)).data.customerUid) || isAdmin() || (isVendor() && request.auth.uid in get(/databases/$(database)/documents/orders/$(orderId)).data.vendorIds);
+      }
+    }
+
+    // --- FINANCIAL & INTERNAL ---
+    match /referrals/{refId} {
+      allow read: if (isAgent() && resource.data.agentId == request.auth.uid) || isAdmin();
+      allow create: if isAgent() && request.resource.data.agentId == request.auth.uid;
+    }
+    match /commissionPlans/{planId} {
+      allow read: if isAdmin() || isAgent();
+      allow write: if isAdmin();
+    }
+    match /commissions/{commId} {
+      allow read: if (isAgent() && resource.data.agentUid == request.auth.uid) || isAdmin();
+      allow write: if false; 
+    }
+    match /payouts/{payoutId} {
+      allow read: if (isAgent() && resource.data.agentId == request.auth.uid) || isAdmin();
+      allow write: if false; 
+    }
+    match /vendorSettlements/{setId} {
+      allow read: if (isVendor() && resource.data.vendorId == request.auth.uid) || isAdmin();
+      allow write: if false; 
+    }
+    match /tcsLedger/{ledgerId} {
+      allow read: if (isVendor() && resource.data.vendorId == request.auth.uid) || isAdmin();
+      allow write: if false; 
+    }
+    match /paymentTransactions/{payId} {
+      allow read: if isOwner(resource.data.customerUid) || isAdmin();
+      allow write: if false;
+    }
+
+    // --- SHIPPING ---
+    match /shippingProviders/{providerId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /shippingZones/{zoneId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /shippingRateCards/{rateCardId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /shipments/{shipmentId} {
+      allow read: if (isVendor() && resource.data.vendorId == request.auth.uid) || isOwner(resource.data.customerUid) || isAdmin();
+      allow update: if (isVendor() && resource.data.vendorId == request.auth.uid) || isAdmin();
+      
+      match /trackingEvents/{eventId} {
+        allow read: if true;
+      }
+    }
+    
+    // --- OTHERS ---
+    match /returns/{returnId} {
+       allow read: if isOwner(resource.data.customerUid) || (isVendor() && resource.data.vendorId == request.auth.uid) || isAdmin();
+       allow create: if isOwner(request.resource.data.customerUid);
+       allow update: if (isVendor() && resource.data.vendorId == request.auth.uid) || isAdmin();
+    }
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow write: if false; 
+    }
+    match /settings/platform {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

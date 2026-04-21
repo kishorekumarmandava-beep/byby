@@ -91,28 +91,36 @@ export async function seedGlobalMocks() {
   });
 
   if (!systemVendor) {
-    // Generate dummy user for vendor
-    const dummyUser = await prisma.user.create({
-      data: {
-        name: "Mock Vendor",
-        email: "mockvendor@example.com",
-        role: "VENDOR",
-        password: "mockpassword",
-      }
-    });
+    try {
+      // Upsert dummy user for vendor to avoid unique constraint crashes
+      const dummyUser = await prisma.user.upsert({
+        where: { email: "mockvendor@example.com" },
+        update: {},
+        create: {
+          name: "Mock Vendor",
+          email: "mockvendor@example.com",
+          role: "VENDOR",
+          password: "mockpassword",
+        }
+      });
 
-    systemVendor = await prisma.vendorProfile.create({
-      data: {
-        userId: dummyUser.id,
-        businessName: "Mock Prototype Vendor",
-        pan: "MOCKP1234V",
-        gstin: "22XXXXX0000X1Z5",
-        totalSales: 0
-      }
-    });
+      systemVendor = await prisma.vendorProfile.create({
+        data: {
+          userId: dummyUser.id,
+          businessName: "Mock Prototype Vendor",
+          pan: "MOCKP1234V",
+          gstin: "22XXXXX0000X1Z5",
+          totalSales: 0
+        }
+      });
+      
+      await seedMockProducts(systemVendor.id);
+    } catch (err) {
+      console.error("Failed to seed global mocks:", err);
+    }
+  } else {
+    await seedMockProducts(systemVendor.id);
   }
-
-  await seedMockProducts(systemVendor.id);
 }
 
 export async function proposeCategory(formData: FormData) {

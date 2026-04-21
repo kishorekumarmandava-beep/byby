@@ -1,96 +1,85 @@
-export const dynamic = "force-dynamic";
+"use client";
 
-import { prisma } from "@/lib/prisma";
-import { cookies } from "next/headers";
-import { decrypt } from "@/lib/session";
+import ProtectedRoute from "@/components/ProtectedRoute";
+import { useAuth } from "@/lib/firebase/context";
+import { db } from "@/lib/firebaseClient";
+import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
+import { useEffect, useState } from "react";
 
-export default async function AgentDashboard() {
-  const cookieStr = (await cookies()).get("session")?.value;
-  const session = await decrypt(cookieStr);
+export default function AgentDashboard() {
+  const { user } = useAuth();
+  
+  const [agentData, setAgentData] = useState<any>(null);
+  const [ledgers, setLedgers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const user = await prisma.user.findUnique({
-    where: { id: session?.userId as string },
-    include: {
-      referralsMade: {
-        include: { referredUser: true },
-      },
-    },
-  });
+  useEffect(() => {
+    const fetchAgentData = async () => {
+      if (!user) return;
+      try {
+        const agentDoc = await getDoc(doc(db, "agents", user.uid));
+        if (agentDoc.exists()) {
+           setAgentData(agentDoc.data());
+        }
 
-  const totalCommission = user?.referralsMade.reduce((sum, ref) => sum + ref.commissionEarned, 0) || 0;
-  const referralCount = user?.referralsMade.length || 0;
+        const q = query(collection(db, "agentCommissions"), where("agentId", "==", user.uid));
+        const snap = await getDocs(q);
+        setLedgers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchAgentData();
+  }, [user]);
 
   return (
-    <div className="page-wrapper">
-      <div className="container" style={{ maxWidth: "720px" }}>
-        {/* Header */}
-        <div className="dashboard-header animate-fade-in">
-          <h1 className="dashboard-title">Agent Dashboard</h1>
-          <p className="dashboard-subtitle">Track your referrals and commission earnings</p>
-        </div>
+    <ProtectedRoute allowedRoles={["agent"]}>
+      <div className="container" style={{ marginTop: "4rem" }}>
+        <h1>Agent Dashboard</h1>
+        {loading ? <p>Loading data...</p> : (
+           <>
+              <div style={{ padding: "1.5rem", background: "#f5f5f5", borderRadius: "8px", margin: "2rem 0" }}>
+                 <p style={{ margin: 0, color: "gray" }}>Your Affiliate/Referral Code</p>
+                 <h2 style={{ letterSpacing: "2px", margin: "0.5rem 0" }}>{agentData?.agentCode}</h2>
+                 <p style={{ color: "green", fontWeight: "bold" }}>Total Processed Earnings: ₹{agentData?.stats?.commissionEarnedTotal?.toLocaleString() || 0}</p>
+                 <p style={{ fontSize: "0.85rem", color: "gray" }}>Share this code with Vendors during their registration to earn commissions from their sales for life.</p>
+              </div>
 
-        {/* Stats */}
-        <div className="stat-grid animate-fade-in-up" style={{ marginBottom: "var(--space-xl)" }}>
-          <div className="stat-card">
-            <span className="stat-card-label">Referred Users</span>
-            <span className="stat-card-value info">{referralCount}</span>
-          </div>
-          <div className="stat-card">
-            <span className="stat-card-label">Total Commission</span>
-            <span className="stat-card-value accent">₹{totalCommission.toLocaleString()}</span>
-          </div>
-        </div>
-
-        {/* Referral Link */}
-        <div className="panel animate-fade-in-up" style={{ marginBottom: "var(--space-xl)" }}>
-          <div className="panel-header">
-            <h2 className="panel-title">🔗 Your Referral Link</h2>
-          </div>
-          <div className="panel-body">
-            <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: "var(--space-md)" }}>
-              Share this link with potential users. When they register, they&apos;ll be automatically linked to your account.
-            </p>
-            <div className="referral-box">
-              <p className="referral-box-label">Shareable Link</p>
-              <p className="referral-box-link">
-                {typeof window !== "undefined" ? window.location.origin : "https://byby.web.app"}/login?ref={user?.id}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Referral History */}
-        <div className="panel animate-fade-in-up">
-          <div className="panel-header">
-            <h2 className="panel-title">👥 Referral History</h2>
-            <span className="badge badge-info">{referralCount} total</span>
-          </div>
-          {referralCount === 0 ? (
-            <div className="empty-state" style={{ padding: "var(--space-xl)" }}>
-              <div className="empty-state-icon">📬</div>
-              <p className="empty-state-message">No referrals yet. Share your link to get started!</p>
-            </div>
-          ) : (
-            <div>
-              {user?.referralsMade.map((ref) => (
-                <div key={ref.id} className="list-item">
-                  <div>
-                    <strong style={{ fontSize: "0.95rem" }}>
-                      {ref.referredUser.name.charAt(0)}***{ref.referredUser.name.slice(-1)}
-                    </strong>
-                    <p style={{ fontSize: "0.8rem", color: "var(--text-tertiary)", margin: 0 }}>
-                      Joined {new Date(ref.createdAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <span style={{ fontWeight: 700, color: "var(--color-accent)" }}>
-                    ₹{ref.commissionEarned.toLocaleString()}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+              <h3>Ledger / Payout History</h3>
+              {ledgers.length === 0 ? <p>No commissions logged yet.</p> : (
+                 <table style={{ width: "100%", marginTop: "1rem", borderCollapse: "collapse" }}>
+                    <thead>
+                       <tr style={{ background: "#eee", textAlign: "left" }}>
+                          <th style={{ padding: "0.5rem", border: "1px solid #ddd" }}>Order ID</th>
+                          <th style={{ padding: "0.5rem", border: "1px solid #ddd" }}>Vendor ID</th>
+                          <th style={{ padding: "0.5rem", border: "1px solid #ddd" }}>Total Sales</th>
+                          <th style={{ padding: "0.5rem", border: "1px solid #ddd" }}>Gross Comm (2%)</th>
+                          <th style={{ padding: "0.5rem", border: "1px solid #ddd" }}>Less TDS (5%)</th>
+                          <th style={{ padding: "0.5rem", border: "1px solid #ddd" }}>Net Earned</th>
+                          <th style={{ padding: "0.5rem", border: "1px solid #ddd" }}>Status</th>
+                       </tr>
+                    </thead>
+                    <tbody>
+                       {ledgers.map(l => (
+                          <tr key={l.id}>
+                             <td style={{ padding: "0.5rem", border: "1px solid #ddd", fontSize: "0.8rem" }}>{l.orderId}</td>
+                             <td style={{ padding: "0.5rem", border: "1px solid #ddd", fontSize: "0.8rem" }}>{l.vendorId}</td>
+                             <td style={{ padding: "0.5rem", border: "1px solid #ddd" }}>₹{l.totalSales}</td>
+                             <td style={{ padding: "0.5rem", border: "1px solid #ddd" }}>₹{l.grossCommission}</td>
+                             <td style={{ padding: "0.5rem", border: "1px solid #ddd", color: "red" }}>-₹{l.tdsAmount}</td>
+                             <td style={{ padding: "0.5rem", border: "1px solid #ddd", color: "green", fontWeight: "bold" }}>₹{l.netCommission}</td>
+                             <td style={{ padding: "0.5rem", border: "1px solid #ddd" }}>{l.status}</td>
+                          </tr>
+                       ))}
+                    </tbody>
+                 </table>
+              )}
+           </>
+        )}
       </div>
-    </div>
+    </ProtectedRoute>
   );
 }
